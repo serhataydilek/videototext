@@ -8,7 +8,11 @@ type JobRecord = {
   emitter: EventEmitter;
 };
 
-const jobs = new Map<string, JobRecord>();
+const globalJobStore = globalThis as typeof globalThis & {
+  youtubeVideoToTextJobs?: Map<string, JobRecord>;
+};
+
+const jobs = (globalJobStore.youtubeVideoToTextJobs ??= new Map<string, JobRecord>());
 
 export function createJob(url: string): JobSnapshot {
   const id = `job_${randomUUID()}`;
@@ -81,6 +85,6 @@ export function failJob(id: string, error: string): JobSnapshot {
     message: error,
     error
   });
-  jobs.get(id)?.emitter.emit("error", snapshot);
+  jobs.get(id)?.emitter.emit("failed", snapshot);
   return snapshot;
 }

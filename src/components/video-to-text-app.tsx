@@ -74,14 +74,14 @@ export function VideoToTextApp() {
       updateFromEvent(event as MessageEvent<string>);
       source.close();
     });
-    source.addEventListener("error", (event) => {
-      if ("data" in event && event.data) {
-        updateFromEvent(event as MessageEvent<string>);
-      } else {
-        setError("Connection to the job stream was interrupted.");
-      }
+    source.addEventListener("failed", (event) => {
+      updateFromEvent(event as MessageEvent<string>);
       source.close();
     });
+    source.onerror = () => {
+      setError("Connection to the job stream was interrupted. Restart the job if progress does not continue.");
+      source.close();
+    };
   }
 
   async function clearHistory() {

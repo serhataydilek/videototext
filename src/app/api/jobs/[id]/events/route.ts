@@ -32,20 +32,26 @@ export async function GET(
         controller.close();
       };
       const onError = (snapshot: JobSnapshot) => {
-        send("error", snapshot);
+        send("failed", snapshot);
         cleanup();
         controller.close();
       };
       const cleanup = () => {
         emitter.off("snapshot", onSnapshot);
         emitter.off("done", onDone);
-        emitter.off("error", onError);
+        emitter.off("failed", onError);
       };
 
       emitter.on("snapshot", onSnapshot);
       emitter.on("done", onDone);
-      emitter.on("error", onError);
+      emitter.on("failed", onError);
       send("snapshot", job);
+
+      if (job.status === "completed") {
+        onDone(job);
+      } else if (job.status === "failed") {
+        onError(job);
+      }
     }
   });
 
