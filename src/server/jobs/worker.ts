@@ -255,22 +255,160 @@ async function transcribeChunk(
 
 function summarizeTranscript(title: string, segments: TranscriptSegment[]): string {
   const duration = segments.at(-1)?.end ?? 0;
-  const preview = segments
-    .filter((segment) => !/^\s*\([^)]*(music|applause|laughter)[^)]*\)\s*$/i.test(segment.text))
-    .slice(0, 8)
-    .map((segment) => segment.text.trim())
-    .join(" ");
+  const spokenSegments = segments.filter((segment) => !isNonSpeechSegment(segment.text));
+  const transcriptText = spokenSegments.map((segment) => segment.text.trim()).join(" ");
+  const sentences = splitSentences(transcriptText);
+  const keyPoints = pickKeySentences(sentences, 5);
+  const opening = sentences.slice(0, 2).join(" ");
 
   return [
-    `Local transcript generated for "${title}".`,
-    `Duration covered: ${Math.round(duration / 60)} minute(s).`,
-    `Transcript segments: ${segments.length}.`,
+    "Overview",
+    `This transcript covers "${title}" and runs for about ${Math.max(1, Math.round(duration / 60))} minute(s).`,
+    `${spokenSegments.length} spoken segment(s) were analyzed locally.`,
     "",
-    preview
-      ? `Opening content: ${preview}`
-      : "No spoken summary could be extracted from the first transcript segments."
+    "Key points",
+    ...(keyPoints.length > 0
+      ? keyPoints.map((point) => `- ${point}`)
+      : ["- No clear spoken key points could be extracted."]),
+    "",
+    "Opening",
+    opening || "No spoken opening could be extracted."
   ].join("\n");
 }
+
+function isNonSpeechSegment(value: string): boolean {
+  return /^\s*\([^)]*(music|applause|laughter|silence)[^)]*\)\s*$/i.test(value);
+}
+
+function splitSentences(value: string): string[] {
+  const sentences = value
+    .replace(/\s+/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length >= 24)
+    .flatMap(splitLongSentence);
+
+  return sentences;
+}
+
+function splitLongSentence(sentence: string): string[] {
+  if (sentence.length <= 320) {
+    return [sentence];
+  }
+
+  const words = sentence.split(" ");
+  const chunks: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    if (current.length + word.length > 260) {
+      chunks.push(current);
+      current = word;
+      continue;
+    }
+
+    current = current ? `${current} ${word}` : word;
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function pickKeySentences(sentences: string[], limit: number): string[] {
+  const frequencies = buildWordFrequencies(sentences);
+
+  return sentences
+    .map((sentence, index) => ({
+      sentence,
+      index,
+      score: scoreSentence(sentence, frequencies) + positionBonus(index, sentences.length)
+    }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.sentence);
+}
+
+function buildWordFrequencies(sentences: string[]): Map<string, number> {
+  const frequencies = new Map<string, number>();
+
+  for (const sentence of sentences) {
+    for (const word of sentence.toLowerCase().match(/[a-z0-9']{4,}/g) ?? []) {
+      if (summaryStopWords.has(word)) {
+        continue;
+      }
+      frequencies.set(word, (frequencies.get(word) ?? 0) + 1);
+    }
+  }
+
+  return frequencies;
+}
+
+function scoreSentence(sentence: string, frequencies: Map<string, number>): number {
+  const words = sentence.toLowerCase().match(/[a-z0-9']{4,}/g) ?? [];
+  if (words.length === 0) {
+    return 0;
+  }
+
+  const score = words.reduce((total, word) => total + (frequencies.get(word) ?? 0), 0);
+  return score / Math.sqrt(words.length);
+}
+
+function positionBonus(index: number, total: number): number {
+  if (total <= 1) {
+    return 0.5;
+  }
+
+  return index < Math.ceil(total * 0.15) ? 0.4 : 0;
+}
+
+const summaryStopWords = new Set([
+  "about",
+  "after",
+  "again",
+  "also",
+  "because",
+  "been",
+  "before",
+  "being",
+  "between",
+  "could",
+  "does",
+  "doing",
+  "from",
+  "have",
+  "into",
+  "just",
+  "like",
+  "more",
+  "most",
+  "only",
+  "over",
+  "really",
+  "some",
+  "than",
+  "that",
+  "their",
+  "them",
+  "then",
+  "there",
+  "these",
+  "they",
+  "this",
+  "through",
+  "very",
+  "what",
+  "when",
+  "where",
+  "which",
+  "while",
+  "with",
+  "would",
+  "your"
+]);
 
 async function checkBinary(command: string, args: string[], label: string): Promise<void> {
   try {

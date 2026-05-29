@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock, Download, FileText, History, Loader2, Trash2, Youtube } from "lucide-react";
 import { buildMarkdownExport, buildTxtExport, safeFilename } from "@/lib/export";
 import { formatTimestampRange } from "@/lib/time";
-import type { JobSnapshot, TranscriptResult } from "@/lib/types";
+import type { JobSnapshot, TranscriptResult, TranscriptSegment } from "@/lib/types";
 
-type ViewMode = "summary" | "transcript";
+type ViewMode = "summary" | "paragraph" | "transcript";
 
 const dbName = "youtube-video-to-text";
 const storeName = "transcripts";
@@ -45,12 +45,19 @@ export function VideoToTextApp() {
     setError(null);
     setJob(null);
 
-    const response = await fetch("/api/jobs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url })
-    });
-    const payload = await response.json();
+    let response: Response;
+    try {
+      response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url })
+      });
+    } catch {
+      setError("Could not reach the local transcription server. Make sure the app is running and reload the page.");
+      return;
+    }
+
+    const payload = await readJsonResponse(response);
 
     if (!response.ok) {
       setError(payload.error ?? "Could not start the job.");
@@ -181,6 +188,14 @@ export function VideoToTextApp() {
   );
 }
 
+async function readJsonResponse(response: Response): Promise<{ error?: string; job?: JobSnapshot }> {
+  try {
+    return (await response.json()) as { error?: string; job?: JobSnapshot };
+  } catch {
+    return { error: `The server returned ${response.status} without a valid JSON response.` };
+  }
+}
+
 function ResultView({
   result,
   viewMode,
@@ -213,13 +228,22 @@ function ResultView({
         <button className={`tab ${viewMode === "summary" ? "active" : ""}`} onClick={() => setViewMode("summary")}>
           Summary
         </button>
+        <button className={`tab ${viewMode === "paragraph" ? "active" : ""}`} onClick={() => setViewMode("paragraph")}>
+          Paragraph
+        </button>
         <button className={`tab ${viewMode === "transcript" ? "active" : ""}`} onClick={() => setViewMode("transcript")}>
-          Transcript
+          Timestamps
         </button>
       </div>
 
       {viewMode === "summary" ? (
         <div className="summary">{result.summary}</div>
+      ) : viewMode === "paragraph" ? (
+        <div className="paragraph-transcript">
+          {segmentsToParagraphs(result.segments).map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))}
+        </div>
       ) : (
         <div className="transcript">
           {result.segments.map((segment, index) => (
@@ -232,6 +256,38 @@ function ResultView({
       )}
     </div>
   );
+}
+
+function segmentsToParagraphs(segments: TranscriptSegment[]): string[] {
+  const paragraphs: string[] = [];
+  let current = "";
+  let sentenceCount = 0;
+
+  for (const segment of segments) {
+    const text = segment.text.trim();
+    if (!text) {
+      continue;
+    }
+
+    current = current ? `${current} ${text}` : text;
+    sentenceCount += countSentenceEndings(text);
+
+    if (current.length >= 650 || sentenceCount >= 5) {
+      paragraphs.push(current);
+      current = "";
+      sentenceCount = 0;
+    }
+  }
+
+  if (current) {
+    paragraphs.push(current);
+  }
+
+  return paragraphs.length > 0 ? paragraphs : ["No transcript text is available."];
+}
+
+function countSentenceEndings(value: string): number {
+  return value.match(/[.!?]+(?=\s|$)/g)?.length ?? 0;
 }
 
 function downloadText(result: TranscriptResult, format: "txt" | "md") {

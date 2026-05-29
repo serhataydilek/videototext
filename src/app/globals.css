@@ -340,6 +340,7 @@ button:disabled {
 }
 
 .summary,
+.paragraph-transcript,
 .transcript {
   max-width: 900px;
   line-height: 1.65;
@@ -347,6 +348,14 @@ button:disabled {
 
 .summary {
   white-space: pre-wrap;
+}
+
+.paragraph-transcript {
+  color: var(--text);
+}
+
+.paragraph-transcript p {
+  margin: 0 0 18px;
 }
 
 .transcript {
