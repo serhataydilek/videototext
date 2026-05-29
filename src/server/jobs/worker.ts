@@ -73,7 +73,10 @@ export async function processJob(id: string, url: string): Promise<void> {
       throw new Error("ffmpeg did not create any audio chunks.");
     }
 
-    const client = new OpenAI();
+    const client = new OpenAI({
+      maxRetries: 0,
+      timeout: 120_000
+    });
     const segmentGroups: TranscriptSegment[][] = [];
 
     for (const [index, chunkPath] of chunkPaths.entries()) {
@@ -269,6 +272,11 @@ function requireEnv(name: string): void {
 }
 
 function toUserError(error: unknown): string {
+  if (error instanceof OpenAI.APIError) {
+    const code = error.code ? ` (${error.code})` : "";
+    return `OpenAI API error ${error.status}${code}: ${error.message}`;
+  }
+
   if (error instanceof Error) {
     return error.message;
   }
