@@ -50,7 +50,7 @@ export async function processJob(id: string, url: string): Promise<void> {
       message: "Reading video metadata."
     });
 
-    const metadata = await getMetadata(ytdlp, url);
+    const metadata = await getMetadata(ytdlp, ffmpeg, url);
     const title = metadata.title?.trim() || "Untitled YouTube video";
     const sourceUrl = metadata.webpage_url || url;
 
@@ -60,7 +60,7 @@ export async function processJob(id: string, url: string): Promise<void> {
       message: "Downloading and extracting audio with yt-dlp."
     });
 
-    const audioPath = await downloadAudio(ytdlp, url, workDir);
+    const audioPath = await downloadAudio(ytdlp, ffmpeg, url, workDir);
 
     updateJob(id, {
       progress: 0.28,
@@ -118,18 +118,28 @@ export async function processJob(id: string, url: string): Promise<void> {
   }
 }
 
-async function getMetadata(ytdlp: string, url: string): Promise<VideoMetadata> {
-  const { stdout } = await runCommand(ytdlp, ["--dump-single-json", "--no-playlist", url], {
-    timeoutMs: 120_000
-  });
+async function getMetadata(ytdlp: string, ffmpeg: string, url: string): Promise<VideoMetadata> {
+  const { stdout } = await runCommand(
+    ytdlp,
+    [...getYtDlpRuntimeArgs(ffmpeg), "--dump-single-json", "--no-playlist", url],
+    {
+      timeoutMs: 120_000
+    }
+  );
   return JSON.parse(stdout) as VideoMetadata;
 }
 
-async function downloadAudio(ytdlp: string, url: string, workDir: string): Promise<string> {
+async function downloadAudio(
+  ytdlp: string,
+  ffmpeg: string,
+  url: string,
+  workDir: string
+): Promise<string> {
   const outputTemplate = path.join(workDir, "source.%(ext)s");
   await runCommand(
     ytdlp,
     [
+      ...getYtDlpRuntimeArgs(ffmpeg),
       "--no-playlist",
       "--extract-audio",
       "--audio-format",
@@ -149,6 +159,23 @@ async function downloadAudio(ytdlp: string, url: string, workDir: string): Promi
     throw new Error("yt-dlp finished without producing an audio file.");
   }
   return path.join(workDir, audioFile);
+}
+
+function getYtDlpRuntimeArgs(ffmpeg: string): string[] {
+  return [
+    "--ffmpeg-location",
+    getFfmpegLocation(ffmpeg),
+    "--js-runtimes",
+    `node:${process.execPath}`
+  ];
+}
+
+function getFfmpegLocation(ffmpeg: string): string {
+  const normalized = ffmpeg.toLowerCase();
+  if (normalized.endsWith("ffmpeg.exe") || normalized.endsWith("ffmpeg")) {
+    return path.dirname(ffmpeg);
+  }
+  return ffmpeg;
 }
 
 async function chunkAudio(ffmpeg: string, audioPath: string, workDir: string): Promise<string[]> {
