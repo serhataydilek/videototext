@@ -1,8 +1,6 @@
-import { createReadStream } from "node:fs";
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { access, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import OpenAI from "openai";
 import type { TranscriptSegment } from "@/lib/types";
 import { mergeSegments, offsetSegments, segmentsToTranscript } from "@/lib/transcript";
 import { runCommand } from "@/server/process";
@@ -13,18 +11,17 @@ type VideoMetadata = {
   webpage_url?: string;
 };
 
-type VerboseTranscription = {
-  text?: string;
-  segments?: Array<{
-    start: number;
-    end: number;
-    text: string;
+type WhisperJsonOutput = {
+  transcription?: Array<{
+    offsets?: {
+      from?: number;
+      to?: number;
+    };
+    text?: string;
   }>;
 };
 
 const CHUNK_SECONDS = 600;
-const transcribeModel = process.env.OPENAI_TRANSCRIBE_MODEL || "whisper-1";
-const summaryModel = process.env.OPENAI_SUMMARY_MODEL || "gpt-5-mini";
 
 export async function processJob(id: string, url: string): Promise<void> {
   const workDir = path.join(tmpdir(), `youtube-video-to-text-${id}`);
@@ -37,11 +34,19 @@ export async function processJob(id: string, url: string): Promise<void> {
       message: "Checking local tools and API configuration."
     });
 
-    requireEnv("OPENAI_API_KEY");
     const ytdlp = process.env.YTDLP_PATH || "yt-dlp";
     const ffmpeg = process.env.FFMPEG_PATH || "ffmpeg";
+    const whisper = process.env.WHISPER_PATH || "whisper-cli";
+    const whisperModel = process.env.WHISPER_MODEL_PATH;
+
+    if (!whisperModel) {
+      throw new Error("WHISPER_MODEL_PATH is missing. Add a local whisper.cpp model path to .env.local.");
+    }
+
     await checkBinary(ytdlp, ["--version"], "yt-dlp");
     await checkBinary(ffmpeg, ["-version"], "ffmpeg");
+    await checkBinary(whisper, ["--help"], "whisper.cpp");
+    await checkFile(whisperModel, "WHISPER_MODEL_PATH");
     await mkdir(workDir, { recursive: true });
 
     updateJob(id, {
@@ -73,10 +78,6 @@ export async function processJob(id: string, url: string): Promise<void> {
       throw new Error("ffmpeg did not create any audio chunks.");
     }
 
-    const client = new OpenAI({
-      maxRetries: 0,
-      timeout: 120_000
-    });
     const segmentGroups: TranscriptSegment[][] = [];
 
     for (const [index, chunkPath] of chunkPaths.entries()) {
@@ -84,10 +85,10 @@ export async function processJob(id: string, url: string): Promise<void> {
       updateJob(id, {
         progress: 0.3 + (index / chunkPaths.length) * 0.5,
         stage: "transcribing",
-        message: `Transcribing chunk ${chunkNumber} of ${chunkPaths.length}.`
+        message: `Transcribing chunk ${chunkNumber} of ${chunkPaths.length} with local Whisper.`
       });
 
-      const chunkSegments = await transcribeChunk(client, chunkPath);
+      const chunkSegments = await transcribeChunk(whisper, whisperModel, chunkPath, workDir, index);
       segmentGroups.push(offsetSegments(chunkSegments, index * CHUNK_SECONDS));
     }
 
@@ -100,10 +101,10 @@ export async function processJob(id: string, url: string): Promise<void> {
     updateJob(id, {
       progress: 0.84,
       stage: "summarizing",
-      message: "Generating summary."
+      message: "Generating local summary."
     });
 
-    const summary = await summarizeTranscript(client, title, transcript);
+    const summary = summarizeTranscript(title, segments);
 
     completeJob(id, {
       id,
@@ -214,69 +215,82 @@ async function chunkAudio(ffmpeg: string, audioPath: string, workDir: string): P
     .map((file) => path.join(workDir, file));
 }
 
-async function transcribeChunk(client: OpenAI, chunkPath: string): Promise<TranscriptSegment[]> {
-  const transcription = (await client.audio.transcriptions.create({
-    file: createReadStream(chunkPath),
-    model: transcribeModel,
-    response_format: "verbose_json",
-    timestamp_granularities: ["segment"]
-  })) as VerboseTranscription;
+async function transcribeChunk(
+  whisper: string,
+  whisperModel: string,
+  chunkPath: string,
+  workDir: string,
+  chunkIndex: number
+): Promise<TranscriptSegment[]> {
+  const outputPrefix = path.join(workDir, `whisper-${String(chunkIndex).padStart(4, "0")}`);
+  await runCommand(
+    whisper,
+    [
+      "-m",
+      whisperModel,
+      "-f",
+      chunkPath,
+      "-oj",
+      "-ojf",
+      "-of",
+      outputPrefix,
+      "-np",
+      "-l",
+      process.env.WHISPER_LANGUAGE || "en",
+      "-t",
+      process.env.WHISPER_THREADS || "4"
+    ],
+    { timeoutMs: 0 }
+  );
 
-  const segments = transcription.segments ?? [];
-  return segments.map((segment) => ({
-    start: segment.start,
-    end: segment.end,
-    text: segment.text
-  }));
+  const json = JSON.parse(await readFile(`${outputPrefix}.json`, "utf8")) as WhisperJsonOutput;
+  return (json.transcription ?? [])
+    .map((segment) => ({
+      start: (segment.offsets?.from ?? 0) / 1000,
+      end: (segment.offsets?.to ?? 0) / 1000,
+      text: segment.text ?? ""
+    }))
+    .filter((segment) => segment.text.trim().length > 0 && segment.end >= segment.start);
 }
 
-async function summarizeTranscript(
-  client: OpenAI,
-  title: string,
-  transcript: string
-): Promise<string> {
-  const response = await client.responses.create({
-    model: summaryModel,
-    instructions:
-      "Summarize YouTube transcripts for a reader who wants the substance quickly. Be concise, factual, and preserve key names, numbers, and decisions.",
-    input: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: `Title: ${title}\n\nTranscript:\n${transcript.slice(0, 120_000)}`
-          }
-        ]
-      }
-    ]
-  });
+function summarizeTranscript(title: string, segments: TranscriptSegment[]): string {
+  const duration = segments.at(-1)?.end ?? 0;
+  const preview = segments
+    .filter((segment) => !/^\s*\([^)]*(music|applause|laughter)[^)]*\)\s*$/i.test(segment.text))
+    .slice(0, 8)
+    .map((segment) => segment.text.trim())
+    .join(" ");
 
-  return response.output_text.trim();
+  return [
+    `Local transcript generated for "${title}".`,
+    `Duration covered: ${Math.round(duration / 60)} minute(s).`,
+    `Transcript segments: ${segments.length}.`,
+    "",
+    preview
+      ? `Opening content: ${preview}`
+      : "No spoken summary could be extracted from the first transcript segments."
+  ].join("\n");
 }
 
 async function checkBinary(command: string, args: string[], label: string): Promise<void> {
   try {
     await runCommand(command, args, { timeoutMs: 15_000 });
   } catch {
-    throw new Error(
-      `${label} is required but was not found. Install ${label} or set ${label === "yt-dlp" ? "YTDLP_PATH" : "FFMPEG_PATH"} in .env.local.`
-    );
+    const envName =
+      label === "yt-dlp" ? "YTDLP_PATH" : label === "ffmpeg" ? "FFMPEG_PATH" : "WHISPER_PATH";
+    throw new Error(`${label} is required but was not found. Install ${label} or set ${envName} in .env.local.`);
   }
 }
 
-function requireEnv(name: string): void {
-  if (!process.env[name]) {
-    throw new Error(`${name} is missing. Add it to .env.local and restart the dev server.`);
+async function checkFile(filePath: string, envName: string): Promise<void> {
+  try {
+    await access(filePath);
+  } catch {
+    throw new Error(`${envName} points to a file that was not found: ${filePath}`);
   }
 }
 
 function toUserError(error: unknown): string {
-  if (error instanceof OpenAI.APIError) {
-    const code = error.code ? ` (${error.code})` : "";
-    return `OpenAI API error ${error.status}${code}: ${error.message}`;
-  }
-
   if (error instanceof Error) {
     return error.message;
   }

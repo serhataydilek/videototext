@@ -2,17 +2,17 @@
 
 A local-first Next.js app that converts YouTube videos into timestamped text transcripts and Markdown summaries.
 
-The app runs on your machine, uses `yt-dlp` and `ffmpeg` to extract/chunk audio, sends audio chunks to OpenAI for transcription, and stores completed transcripts in your browser with IndexedDB.
+The app runs on your machine, uses `yt-dlp` and `ffmpeg` to extract/chunk audio, transcribes chunks locally with `whisper.cpp`, and stores completed transcripts in your browser with IndexedDB.
 
 ## Features
 
 - Paste a YouTube URL and start a transcription job.
 - Live progress updates through server-sent events.
 - Timestamped transcript view.
-- AI-generated summary.
+- Local transcript overview.
 - Browser-only transcript history.
 - TXT and Markdown downloads.
-- Server-only OpenAI API key handling through `.env.local`.
+- No paid API key required for transcription.
 
 ## Requirements
 
@@ -20,27 +20,21 @@ The app runs on your machine, uses `yt-dlp` and `ffmpeg` to extract/chunk audio,
 - Corepack, included with modern Node.js installs.
 - `yt-dlp` installed and available on PATH.
 - `ffmpeg` installed and available on PATH.
-- An OpenAI API key.
+- `whisper.cpp` installed locally.
+- A local whisper.cpp GGML model file.
 
-## Get An OpenAI API Key
+## Local Configuration
 
-1. Go to the OpenAI API dashboard: https://platform.openai.com/api-keys
-2. Sign in or create an account.
-3. Create a project if you do not already have one.
-4. Create a new API key for that project.
-5. Copy the key once and keep it private. Do not commit it to GitHub.
-6. In this project, copy `.env.example` to `.env.local`.
-7. Put the key in `.env.local`:
+Copy `.env.example` to `.env.local` and set your local tool paths:
 
 ```env
-OPENAI_API_KEY=your_api_key_here
-OPENAI_TRANSCRIBE_MODEL=whisper-1
-OPENAI_SUMMARY_MODEL=gpt-5-mini
 YTDLP_PATH=yt-dlp
 FFMPEG_PATH=ffmpeg
+WHISPER_PATH=whisper-cli
+WHISPER_MODEL_PATH=C:\path\to\ggml-base.en.bin
+WHISPER_LANGUAGE=en
+WHISPER_THREADS=4
 ```
-
-OpenAI's official docs recommend storing API keys securely and loading them from server-side environment variables, not browser/client code.
 
 ## Install Local Audio Tools
 
@@ -61,6 +55,20 @@ ffmpeg -version
 ```
 
 If either command is not found, set `YTDLP_PATH` or `FFMPEG_PATH` in `.env.local` to the full executable path.
+
+Install `whisper.cpp` from its releases page and download a GGML model such as `ggml-base.en.bin`:
+
+```text
+https://github.com/ggml-org/whisper.cpp/releases
+https://huggingface.co/ggerganov/whisper.cpp/tree/main
+```
+
+For this local setup, the paths can look like:
+
+```env
+WHISPER_PATH=C:\tmp\videototext-tools\whisper\Release\whisper-cli.exe
+WHISPER_MODEL_PATH=C:\tmp\videototext-tools\whisper\ggml-base.en.bin
+```
 
 ## Install Dependencies
 
@@ -97,9 +105,9 @@ corepack pnpm build
 2. The server validates the URL and creates an in-memory job.
 3. The server uses `yt-dlp` to download audio.
 4. The server uses `ffmpeg` to normalize and split the audio into chunks.
-5. Each chunk is transcribed with OpenAI.
+5. Each chunk is transcribed locally with `whisper.cpp`.
 6. Chunk timestamps are offset and merged into one transcript.
-7. The transcript is summarized with OpenAI.
+7. A simple local overview is generated from the transcript.
 8. The browser saves the completed result in IndexedDB.
 
 In-progress jobs are stored in memory. If the dev server restarts, active jobs are lost, but completed browser history remains.
@@ -108,5 +116,5 @@ In-progress jobs are stored in memory. If the dev server restarts, active jobs a
 
 - Only transcribe videos you are allowed to download and process.
 - This app is designed for local development, not serverless hosting.
-- Long videos can take time and may use significant API credits.
-- The API key is read only on the server. Never paste it into frontend code.
+- Long videos can take time because transcription runs on your CPU/GPU.
+- Larger Whisper models are more accurate but slower and use more disk/RAM.
