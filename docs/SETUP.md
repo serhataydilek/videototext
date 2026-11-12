@@ -1,6 +1,8 @@
 # Setup
 
-## Installing Local Tools
+## Windows
+
+Extract the Windows release archives before configuring paths. Keep the Whisper DLLs beside `whisper-cli.exe`.
 
 ### yt-dlp
 
@@ -67,17 +69,46 @@ WHISPER_PATH=C:\path\to\whisper-cli.exe
 WHISPER_MODEL_PATH=C:\path\to\ggml-base.en.bin
 ```
 
+## Linux (Debian/Ubuntu)
+
+Install FFmpeg and the Whisper build tools. Install yt-dlp with its YouTube challenge solver and build whisper-cli in a separate tools directory:
+
+```sh
+sudo apt install ffmpeg cmake build-essential git pipx
+pipx install 'yt-dlp[default]'
+pipx ensurepath
+git clone https://github.com/ggml-org/whisper.cpp.git
+cmake -S whisper.cpp -B whisper.cpp/build
+cmake --build whisper.cpp/build --config Release -j
+```
+
+Open a new shell for the pipx PATH and set `WHISPER_PATH` to the absolute path of `whisper.cpp/build/bin/whisper-cli`. Other distributions can use the corresponding packages or upstream binaries. [whisper.cpp build instructions](https://github.com/ggml-org/whisper.cpp#quick-start) · [yt-dlp runtime setup](https://github.com/yt-dlp/yt-dlp/wiki/EJS)
+
+## macOS
+
+With Homebrew installed, run:
+
+```sh
+brew install ffmpeg whisper.cpp pipx
+pipx install 'yt-dlp[default]'
+pipx ensurepath
+```
+
+Open a new shell for the pipx PATH. The Homebrew formula supplies `whisper-cli`. [Homebrew whisper.cpp](https://formulae.brew.sh/formula/whisper.cpp)
+
+For every platform, download the model, configure the checkout, then run `videototext doctor`. [Model configuration](../README.md#configure-the-model)
+
 ## Troubleshooting
 
-### `yt-dlp is required but was not found`
+### yt-dlp check failed
 
 Set `YTDLP_PATH` in `.env.local` to the full path of `yt-dlp.exe`.
 
-### `ffprobe and ffmpeg not found`
+### ffprobe or FFmpeg check failed
 
 Set `FFMPEG_PATH` to the full path of `ffmpeg.exe`. Make sure `ffprobe.exe` is in the same folder.
 
-### `WHISPER_MODEL_PATH is missing`
+### Model file check failed
 
 Download a GGML model and set `WHISPER_MODEL_PATH` in `.env.local`.
 

@@ -17,23 +17,19 @@ export function isValidYoutubeUrl(value: string): boolean {
     const url = new URL(value);
     const host = url.hostname.toLowerCase();
 
-    if (!youtubeHosts.has(host)) {
+    if (!["http:", "https:"].includes(url.protocol) || !youtubeHosts.has(host) ||
+        url.username || url.password || url.port) {
       return false;
     }
 
+    const videoId = /^[A-Za-z0-9_-]{11}$/;
     if (host === "youtu.be") {
-      return url.pathname.split("/").filter(Boolean).length === 1;
+      return /^\/[A-Za-z0-9_-]{11}\/?$/.test(url.pathname);
     }
-
-    if (url.pathname === "/watch" && url.searchParams.has("v")) {
-      return Boolean(url.searchParams.get("v")?.trim());
+    if (url.pathname === "/watch") {
+      return videoId.test(url.searchParams.get("v") ?? "");
     }
-
-    if (url.pathname.startsWith("/shorts/") || url.pathname.startsWith("/live/")) {
-      return url.pathname.split("/").filter(Boolean).length >= 2;
-    }
-
-    return false;
+    return /^\/(shorts|live)\/[A-Za-z0-9_-]{11}\/?$/.test(url.pathname);
   } catch {
     return false;
   }

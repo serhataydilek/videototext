@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "node16",
+    "rootDir": "src",
+    "outDir": "dist",
+    "newLine": "lf",
+    "noEmit": false,
+    "incremental": false
+  },
+  "include": ["src/cli/main.ts"]
+}
