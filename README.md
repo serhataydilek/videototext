@@ -145,6 +145,8 @@ corepack pnpm run build:cli
 corepack pnpm build
 ```
 
+GitHub Actions runs the same checks on Ubuntu, Windows, and macOS for every pull request and push to `main` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)). The mocked tests need no yt-dlp, FFmpeg, or Whisper binaries.
+
 ## License
 
 See the [MIT license](LICENSE) for VideoToText. The separately installed tools and models retain their upstream licenses.
