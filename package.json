@@ -1,6 +1,6 @@
 {
   "name": "youtube-video-to-text",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "packageManager": "pnpm@11.5.0",
   "scripts": {
@@ -9,6 +9,8 @@
     "start": "next start --hostname 127.0.0.1",
     "lint": "next lint",
     "test": "vitest run",
+    "test:browser": "playwright test ui.spec.ts",
+    "test:browser:real": "playwright test real.spec.ts",
     "build:cli": "tsc -p tsconfig.cli.json"
   },
   "dependencies": {
@@ -19,6 +21,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "@testing-library/react": "^16.1.0",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.1",

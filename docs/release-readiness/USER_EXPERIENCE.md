@@ -1,5 +1,7 @@
 # First-use and execution evidence
 
+**Final update:** the earlier browser obstacle below is historical. Final v0.2.1 acceptance succeeded with authorized local Playwright/Chromium; see the final-validation section at the end.
+
 Test date: **2026-11-14 (Europe/Istanbul)**. Local host: Windows, Node 24.14.0, pinned pnpm 11.5.0. These observations do not establish installation on a pristine OS or real inference on Linux/macOS.
 
 ## Installation rehearsal
@@ -67,3 +69,39 @@ Standalone TypeScript, CLI compilation and optimized web build passed. `git diff
 ## Onboarding verdict
 
 A developer now has a complete source-install route and can diagnose missing prerequisites before attempting transcription. Doctor validates executable invocation, configuration syntax and a nonempty readable model file, not model authenticity, hardware support or future YouTube availability. Agensi is useful as an instruction-discovery channel **after** setup; the listing must disclose this prominently. Remaining manual setup and the licensing/delivery question are recorded in [AGENSI_RESEARCH.md](AGENSI_RESEARCH.md).
+
+## Final v0.2.1 browser acceptance — 2026-11-14
+
+Baseline verified: PR #2 merged as `032f25ebbf250b8903247f8bcbeab78a2c5fd8fe`, with successful Ubuntu/Windows/macOS [merge CI](https://github.com/serhataydilek/videototext/actions/runs/43517518635). The new `release/v0.2.1-final` branch starts there. There were no unrelated dirty files.
+
+The owner explicitly requested Playwright/local browser testing. A new isolated Chromium process accessed the actual loopback production server on port 3100, without bypassing an interstitial, changing URL checks, exposing a public port, or touching the user's existing browser profile. Playwright is a development-only dependency; it provides maintained browser regression coverage for the storage/status fixes. This supersedes the prior Computer Use limitation, rather than treating HTTP as visual acceptance.
+
+### Observed browser behavior
+
+| Area | Evidence / result |
+| --- | --- |
+| Home and real submission | Real Chromium page rendered; submitted `https://youtu.be/jNQXAC9IVRw` through the form |
+| Actual backend | Real yt-dlp → FFmpeg → whisper.cpp with the existing English GGML model; no API/SSE fixture interception in the real test |
+| Progress and completion | Rendered stages observed: queued, checking, metadata, downloading, chunking, transcribing, summarizing, completed; four segments displayed |
+| Views | Summary, paragraph and timestamp views switched correctly |
+| Downloads | Real TXT/Markdown browser downloads contained the title, supplied URL, timestamp ranges and recognized text; isolated tests additionally checked exact fixture summary and segment content |
+| History | Saved after completion; refresh restored the transcript. A separate two-result fixture test reopened the earlier transcript |
+| Failure UX | Real invalid-URL response displayed visibly. Isolated malformed-response, disconnected-stream, pending-submit and history-clear failure cases now pass |
+| Storage | Isolated native IndexedDB blocked-open, quota-on-write and delayed-read fault cases keep completed transcripts visible; exports work without stored history |
+| Keyboard/semantics | Arrow/Home/End tab navigation, selected state and panel association passed in Chromium. Progress is a progressbar; messages expose status/alert roles |
+| Responsive layout | Desktop 1280×900 and mobile 390×844 genuine captures inspected. Fixture test checks tab-strip fit and page overflow at 390 and 320px |
+| JavaScript errors | No page errors in the real run |
+
+Commands: `corepack pnpm build`, `corepack pnpm run test:browser` (**10 passed**), and `corepack pnpm run test:browser:real` (**1 passed**). Nine of the ten isolated cases use synthetic server/fault fixtures; one uses the actual invalid-URL endpoint without starting transcription. The real test uses actual tools and a fresh browser context.
+
+### Confirmed bugs fixed
+
+The first browser fault pass had 2 passing and 6 failing cases. It exposed: stale history reads overwriting the new result; malformed successful responses throwing without a usable message; stream loss leaving the form permanently disabled; duplicate pending submissions; invisible history-clear failures; and a tablist without operable tab roles. These now pass, with IndexedDB connections also closed on failures and the event subscription closed on unmount/replacement. A subsequent screenshot showed mobile tabs escaping their padded area; a small mobile-only padding/tab rule fixes it. A later ambiguous `alert` locator matched Next's own route announcer as well as our error; that was corrected in the test, not misreported as a product bug.
+
+Genuine images: [desktop](../screenshots/v0.2.1-desktop.png), [mobile](../screenshots/v0.2.1-mobile.png). They show uncorrected model output and a real local timestamp, without credentials or local filesystem paths. No UI mockup, generated image or edited transcript was used. Raw exports, browser JSON evidence, failure traces and registry audit snapshots remain ignored under `release-artifacts/`.
+
+Chromium version: **158.0.8127.18**, Playwright **1.65.0**, Windows host, Node **24.14.0**, pnpm **11.5.0**. The screenshots validate these rendered states, not all browser engines or physical mobile devices. Keyboard checks are not a full WCAG or screen-reader certification. Automatic agent skill discovery, Agensi MCP delivery, multi-hour jobs and real Linux/macOS inference remain untested. Closing a tab does not cancel the backend transcription; the UI says processing may continue after a stream disconnect.
+
+### Final clean Git checkout
+
+Cloned the local `release/v0.2.1-final` source commit `fda2b7fccee1baed5cbc89d8f3d89a9c18c7b3e4` with `git clone --no-local --single-branch` into a new temporary checkout outside the project. No `.env.local`, node_modules, dist, build output, tool binaries or model was copied. On that clone, frozen installation, CLI build, CLI help and the production web build all passed; the manifest reported 0.2.1 and Git status was clean. Doctor correctly returned 3 with missing yt-dlp/whisper-cli/model diagnostics; FFmpeg/ffprobe were already on this host's PATH. This is an actual clean Git checkout test with the host package cache, not a pristine OS or a claim that external tools install themselves.

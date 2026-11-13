@@ -1,5 +1,7 @@
 # Technical audit
 
+**Final v0.2.1 update:** the original PR #2 findings below are retained as a baseline. The final dependency review and browser evidence are appended at the end; earlier browser-unverified and advisory-count statements are historical.
+
 Audit date: **2026-11-14 (Europe/Istanbul)**. Baseline: merged main `5a7be3e`, package version 0.2.0. Working branch: `feat/release-readiness`. Scope includes all tracked application, CLI, pipeline, tests, skill, setup, manifest/lockfile and CI files. No credentials or local configuration are reproduced here.
 
 ## Findings and disposition
@@ -62,3 +64,21 @@ Local checks used Windows, Node 24.14.0, pinned pnpm 11.5.0, Python 3.14.3 for p
 The [Codex documentation](https://learn.chatgpt.com/docs/build-skills), [Claude Code documentation](https://code.claude.com/docs/en/skills), and [Cursor documentation](https://cursor.com/docs/skills) support the listed name/description skill layout and local directories. A real agent followed the skill and ran the local CLI successfully. Automatic discovery in those three clients and Agensi MCP delivery were not tested.
 
 Production HTTP and browser outcomes, clean-source installation and the uncorrected real transcript are in [USER_EXPERIENCE.md](USER_EXPERIENCE.md). No penetration test, multilingual quality study, large-video benchmark, multi-hour fault test or crash-safe cleanup claim is made.
+
+## Final v0.2.1 dependency review — 2026-11-14
+
+Official advisory pages were revisited on this date. Safe updates within existing dependency ranges resolved js-yaml to 4.3.2, brace-expansion to 1.1.22 / 5.0.13, and Vite's PostCSS to 8.5.32. Framework/runtime major versions were retained. Playwright 1.65.0 is a development-only test dependency, justified by the actual browser fault regressions and genuine acceptance test; its browser binaries are not part of the application or skill ZIP.
+
+| Audit scope | Critical | High | Moderate | Low |
+| --- | ---: | ---: | ---: | ---: |
+| Before final updates, all dependencies | 3 | 16 | 15 | 1 |
+| Final, all dependencies | 3 | 2 | 11 | 1 |
+| Final, production only | 0 | 1 | 0 | 0 |
+
+These are registry advisory counts, not proof of exploitability. No affected production path was identified for the remaining Zod array issue: `src/lib/youtube.ts` uses only `z.string().trim().url().refine(...)`. Arrays fail its string check; no collection schema processes attacker-controlled items. Migrating Zod to a new major solely to erase a non-applicable advisory was not justified. [Zod advisory](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
+
+The remaining development criticals are Vitest UI/API access and tinypool worker/run-option prototype-pollution gadgets. The project runs `vitest run`, with no Vitest UI, browser mode or public API listener, and does not pass network-derived worker options. The **Playwright** browser suite is separate from Vitest Browser Mode. No prototype-pollution source reaching tinypool was demonstrated. Do not run untrusted tests or expose Vite/Vitest tooling. [Vitest advisory](https://github.com/vitest-dev/vitest/security/advisories/GHSA-5xrq-8626-4rwp), [tinypool worker options](https://github.com/advisories/GHSA-5gmw-xhrv-c9v3), [tinypool run options](https://github.com/advisories/GHSA-85c8-ppgw-ccpr).
+
+The remaining high Vite finding concerns Windows editor-opening middleware and a crafted file argument. VideoToText serves through Next, not Vite; the unit tests do not expose that editor middleware. Other remaining Vite/esbuild/mocker/minimatch findings are also development tooling, not transcription endpoints. Patched versions fall outside the current compatible ranges: Vitest/Vite/tinypool/minimatch need major-version coordination, and esbuild needs a different 0.x range. No unsupported transitive override or test-runner migration was introduced in this maintenance patch. [Editor middleware advisory](https://github.com/advisories/GHSA-587h-7wmj-h5pm). This is a documented residual tooling risk, not a clean audit claim.
+
+The loopback Host/Origin/content-type restrictions remain intact. Actual browser POST and download behavior passed without weakening them; existing route/process tests still pass. Final browser tests also confirmed and fixed the storage-read race, duplicate submission window, stuck form after stream loss, invisible malformed-response/clear failures, inaccessible view tabs, and mobile tab fit. See [USER_EXPERIENCE.md](USER_EXPERIENCE.md) for the distinction between real inference and isolated fault fixtures. The local single-user/no-quota/no-resume limitations remain.

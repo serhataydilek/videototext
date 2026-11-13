@@ -1,5 +1,7 @@
 # VideoToText
 
+**Version: 0.2.1**
+
 Turn a YouTube video into a timestamped transcript and an extractive summary using your own machine. Use the standalone CLI, install its instructions as an agent skill, or open the local web app. VideoToText is free and MIT-licensed. Transcription requires no account, subscription, or paid API.
 
 ## Install the CLI from source
@@ -145,7 +147,13 @@ On Windows, a real run with `ggml-base.en.bin` processed [Me at the zoo](https:/
 [00:00:00 - 00:00:05] Alright, so here we are, one of the elephants.
 ```
 
-This is uncorrected model output, not a verified quotation. See the [release-readiness evidence and limitations](docs/release-readiness/USER_EXPERIENCE.md) for the full context. A text example is sufficient for this CLI workflow; no simulated screenshots or benchmark claims are used.
+This is uncorrected model output, not a verified quotation. See the [release-readiness evidence and limitations](docs/release-readiness/USER_EXPERIENCE.md) for the full context.
+
+## Browser example
+
+Genuine Chromium capture after local transcription of the same video. Recognition errors are preserved. [Mobile capture](docs/screenshots/v0.2.1-mobile.png).
+
+![VideoToText displaying the real timestamped transcription](docs/screenshots/v0.2.1-desktop.png)
 
 ## Development
 
@@ -156,7 +164,16 @@ corepack pnpm run build:cli
 corepack pnpm build
 ```
 
-GitHub Actions runs the same checks on Ubuntu, Windows, and macOS for every pull request and push to `main` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)). The mocked tests need no yt-dlp, FFmpeg, or Whisper binaries.
+GitHub Actions runs the same checks plus Chromium browser regressions on Ubuntu, Windows, and macOS for every pull request and push to `main` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)). CI tests use synthetic transcription fixtures and need no yt-dlp, FFmpeg, or Whisper binaries.
+
+After building the web app, run the browser regressions locally with:
+
+```sh
+corepack pnpm exec playwright install chromium
+corepack pnpm run test:browser
+```
+
+Playwright is a development-only dependency. Its tests start and stop an isolated local production server and browser profile on port 3100. To exercise a genuine YouTube transcription with your configured tools/model, run `corepack pnpm run test:browser:real`. That separate network-dependent test regenerates the screenshots above and saves ignored exports under `release-artifacts/`; it is not run in CI. Mobile checks use Chromium viewports, not physical phones.
 
 ## Contributing and troubleshooting
 
