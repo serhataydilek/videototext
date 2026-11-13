@@ -1,5 +1,7 @@
 # Setup
 
+Start with [the source installation commands](../README.md#install-the-cli-from-source). Install the tools below separately: a skill ZIP does not contain them. No paid account or API is needed. Prefer official releases or your platform's package manager, review upstream license and checksum information where supplied, and do not pipe downloaded scripts into a shell.
+
 ## Windows
 
 Extract the Windows release archives before configuring paths. Keep the Whisper DLLs beside `whisper-cli.exe`.
@@ -32,6 +34,7 @@ Verify:
 
 ```powershell
 ffmpeg -version
+ffprobe -version
 ```
 
 If it is not on PATH, set `FFMPEG_PATH` in `.env.local` to the full `ffmpeg.exe` path. The app passes that location to `yt-dlp`, so `ffprobe.exe` should be in the same folder.
@@ -55,6 +58,8 @@ Recommended first model:
 ```text
 ggml-base.en.bin
 ```
+
+Use `ggml-base.bin` instead for multilingual audio, and set `WHISPER_LANGUAGE=auto` or a supported code such as `tr`. `.en` models are English-only. Smaller models generally need fewer resources; larger models can improve recognition but are not guaranteed to fix a particular recording. See the [upstream model comparison](https://github.com/ggml-org/whisper.cpp/tree/master/models). Download the actual model file, not an HTML page or Git LFS pointer. Doctor can check readability but cannot prove that a model is valid.
 
 Verify:
 
@@ -102,7 +107,7 @@ For every platform, download the model, configure the checkout, then run `videot
 
 ### yt-dlp check failed
 
-Set `YTDLP_PATH` in `.env.local` to the full path of `yt-dlp.exe`.
+Run the tool's `--version` command, then set `YTDLP_PATH` in `.env.local` to its full executable path if it is not on PATH. Use a current official standalone binary or the documented `yt-dlp[default]` install; YouTube extraction also needs the challenge solver and the Node.js runtime. VideoToText uses the running Node executable and does not enable downloading remote solver components.
 
 ### ffprobe or FFmpeg check failed
 
@@ -119,3 +124,19 @@ Local Whisper speed depends on your CPU/GPU and model size. Use `ggml-base.en.bi
 ### Transcript quality is weak
 
 Use a larger model, such as `small.en` or `medium.en`. Larger models are slower and use more RAM.
+
+### CLI is not found
+
+From the checkout, run `node dist/cli/main.js --help`. Rebuild with `corepack pnpm run build:cli` if `dist` is missing. `npm link` is optional; if used, its bin directory must be on PATH and the checkout must remain in place. On PowerShell, use `videototext.cmd` if execution policy blocks npm's `.ps1` shim. Do not weaken execution policy for this tool.
+
+### Video cannot be downloaded
+
+Check that it is a single public video that plays in your region, and that the broadcast has ended. Private, removed, age-restricted, region-blocked and scheduled videos may fail. Update yt-dlp from its upstream distribution if YouTube extraction changed. VideoToText ignores global yt-dlp configs/plugins, including proxy and cookie settings; it provides no login or restriction-bypass flow. Report the redacted stderr diagnostic instead of retrying indefinitely.
+
+### Export failed
+
+The output parent directory must exist and be writable. A failed transcription or write preserves an earlier destination file. A successful export replaces it. In the browser, export results if history storage fails; browser storage is not a backup.
+
+### Interrupted or long-running jobs
+
+CLI Ctrl+C and SIGTERM stop the active process tree and attempt temporary-file cleanup. A killed process or power loss cannot run cleanup. Web jobs continue if the tab closes, and a web-server restart loses job state. PCM chunks require about 115 MB per hour plus the download; check disk space before long videos. Download socket operations and metadata checks are bounded, but there is no overall transcription deadline or resume support.
