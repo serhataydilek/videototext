@@ -8,7 +8,7 @@ import { checkDependencies, getConfig, DependencyError } from "./dependencies";
 
 type VideoMetadata = {
   title?: string;
-  webpage_url?: string;
+  is_live?: boolean;
 };
 
 type WhisperJsonOutput = {
@@ -43,8 +43,8 @@ export async function transcribe(
     });
 
     const metadata = await getMetadata(ytdlp, ffmpeg, url, signal);
+    if (metadata.is_live) throw new Error("This video is still live. Try again after the broadcast has ended.");
     const title = metadata.title?.trim() || "Untitled YouTube video";
-    const sourceUrl = metadata.webpage_url || url;
 
     onProgress({
       progress: 0.14,
@@ -66,6 +66,7 @@ export async function transcribe(
     }
 
     const segmentGroups: TranscriptSegment[][] = [];
+    let offset = 0;
 
     for (const [index, chunkPath] of chunkPaths.entries()) {
       const chunkNumber = index + 1;
@@ -75,8 +76,14 @@ export async function transcribe(
         message: `Transcribing chunk ${chunkNumber} of ${chunkPaths.length} with local Whisper.`
       });
 
-      const chunkSegments = await transcribeChunk(config, chunkPath, workDir, index, signal);
-      segmentGroups.push(offsetSegments(chunkSegments, index * CHUNK_SECONDS));
+      const { stdout } = await runCommand(config.ffprobe, [
+        "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", chunkPath
+      ], { signal, timeoutMs: 15_000 });
+      const duration = Number(stdout.trim());
+      if (!Number.isFinite(duration) || duration <= 0) throw new Error("ffprobe returned an invalid chunk duration.");
+      const chunkSegments = await transcribeChunk(config, chunkPath, workDir, index, duration, signal);
+      segmentGroups.push(offsetSegments(chunkSegments, offset));
+      offset += duration;
     }
 
     const segments = mergeSegments(segmentGroups);
@@ -95,7 +102,7 @@ export async function transcribe(
 
     return {
       id,
-      url: sourceUrl,
+      url,
       title,
       createdAt: new Date().toISOString(),
       transcript,
@@ -154,7 +161,9 @@ async function downloadAudio(
 
 function getYtDlpRuntimeArgs(ffmpeg: string): string[] {
   const location = ffmpeg === path.basename(ffmpeg) ? [] : ["--ffmpeg-location", path.resolve(ffmpeg)];
-  return [...location, "--js-runtimes", `node:${process.execPath}`];
+  // User-level configs can contain output paths, cookies, proxies or --exec hooks.
+  return ["--ignore-config", "--no-plugin-dirs", "--socket-timeout", "30",
+    ...location, "--js-runtimes", `node:${process.execPath}`];
 }
 
 async function chunkAudio(ffmpeg: string, audioPath: string, workDir: string, signal?: AbortSignal): Promise<string[]> {
@@ -197,6 +206,7 @@ async function transcribeChunk(
   chunkPath: string,
   workDir: string,
   chunkIndex: number,
+  duration: number,
   signal?: AbortSignal
 ): Promise<TranscriptSegment[]> {
   const outputPrefix = path.join(workDir, `whisper-${String(chunkIndex).padStart(4, "0")}`);
@@ -220,13 +230,17 @@ async function transcribeChunk(
   );
 
   const json = JSON.parse(await readFile(`${outputPrefix}.json`, "utf8")) as WhisperJsonOutput;
-  return (json.transcription ?? [])
-    .map((segment) => ({
-      start: (segment.offsets?.from ?? 0) / 1000,
-      end: (segment.offsets?.to ?? 0) / 1000,
-      text: segment.text ?? ""
-    }))
-    .filter((segment) => segment.text.trim().length > 0 && segment.end >= segment.start);
+  if (!Array.isArray(json.transcription)) throw new Error("Whisper returned an invalid transcription JSON file.");
+  return json.transcription.map((segment) => {
+    const start = segment?.offsets?.from;
+    const end = segment?.offsets?.to;
+    if (typeof start !== "number" || typeof end !== "number" ||
+        !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start ||
+        typeof segment.text !== "string") {
+      throw new Error("Whisper returned invalid segment timestamps or text.");
+    }
+    return { start: Math.min(start / 1000, duration), end: Math.min(end / 1000, duration), text: segment.text };
+  }).filter((segment) => segment.text.trim().length > 0 && segment.end > segment.start);
 }
 
 function summarizeTranscript(title: string, segments: TranscriptSegment[]): string {

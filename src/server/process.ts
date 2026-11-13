@@ -8,7 +8,7 @@ export type CommandResult = {
 export function runCommand(
   command: string,
   args: string[],
-  options: { cwd?: string; timeoutMs?: number; signal?: AbortSignal } = {}
+  options: { cwd?: string; timeoutMs?: number; signal?: AbortSignal; maxStdoutBytes?: number } = {}
 ): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
     options.signal?.throwIfAborted();
@@ -24,6 +24,7 @@ export function runCommand(
     let stderr = "";
     let timeout: NodeJS.Timeout | undefined;
     let stopped: Error | undefined;
+    let stdoutBytes = 0;
 
     // yt-dlp can launch ffmpeg and Node. Stop the tree before deleting its files.
     function stop(reason: Error) {
@@ -53,6 +54,11 @@ export function runCommand(
     }
 
     child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+      stdoutBytes += Buffer.byteLength(chunk);
+      if (stdoutBytes > (options.maxStdoutBytes ?? 8 * 1024 * 1024)) {
+        stop(new Error(`${command} exceeded the stdout size limit.`));
+        return;
+      }
       stdout += chunk;
     });
 

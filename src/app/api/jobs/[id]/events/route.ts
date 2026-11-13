@@ -5,7 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { id } = await context.params;
@@ -17,8 +17,10 @@ export async function GET(
   }
 
   const encoder = new TextEncoder();
+  let cleanup = () => {};
   const stream = new ReadableStream({
     start(controller) {
+      let closed = false;
       const send = (event: string, snapshot: JobSnapshot) => {
         controller.enqueue(
           encoder.encode(`event: ${event}\ndata: ${JSON.stringify(snapshot)}\n\n`)
@@ -36,15 +38,27 @@ export async function GET(
         cleanup();
         controller.close();
       };
-      const cleanup = () => {
+      const onAbort = () => {
+        if (closed) return;
+        cleanup();
+        controller.close();
+      };
+      cleanup = () => {
+        closed = true;
         emitter.off("snapshot", onSnapshot);
         emitter.off("done", onDone);
         emitter.off("failed", onError);
+        request.signal.removeEventListener("abort", onAbort);
       };
 
       emitter.on("snapshot", onSnapshot);
       emitter.on("done", onDone);
       emitter.on("failed", onError);
+      request.signal.addEventListener("abort", onAbort, { once: true });
+      if (request.signal.aborted) {
+        onAbort();
+        return;
+      }
       send("snapshot", job);
 
       if (job.status === "completed") {
@@ -52,7 +66,8 @@ export async function GET(
       } else if (job.status === "failed") {
         onError(job);
       }
-    }
+    },
+    cancel() { cleanup(); }
   });
 
   return new Response(stream, {

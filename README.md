@@ -1,21 +1,20 @@
 # VideoToText
 
-**Status:** Demo Ready
-
 Turn a YouTube video into a timestamped transcript and an extractive summary using your own machine. Use the standalone CLI, install its instructions as an agent skill, or open the local web app. VideoToText is free and MIT-licensed. Transcription requires no account, subscription, or paid API.
 
 ## Install the CLI from source
 
-Use Node.js 22.13 or newer and Corepack. If `corepack` is missing, install it with `npm install --global corepack`. From the v0.2.0 checkout, run:
+Use Git, Node.js 22.13 or newer, and Corepack. If `corepack` is missing, install it with `npm install --global corepack`. Corepack uses the project's pinned pnpm version (11.5.0):
 
 ```sh
+git clone https://github.com/serhataydilek/videototext.git
+cd videototext
 corepack pnpm install --frozen-lockfile
 corepack pnpm run build:cli
-npm link
-videototext --help
+node dist/cli/main.js --help
 ```
 
-`npm link` adds the command to your npm bin directory. Keep the checkout in place and rebuild after updating the source. You can also run `node dist/cli/main.js` from the checkout without linking. The CLI starts no Next.js server.
+The CLI starts no Next.js server. Optionally run `npm link` to use the shorter `videototext` command in the examples below. Without linking, replace `videototext` with `node dist/cli/main.js` from the checkout. Keep the checkout in place and rebuild after updating the source. There is no published npm installation to use here.
 
 Install the platform tools before running doctor. [Windows, Linux and macOS setup](docs/SETUP.md)
 
@@ -53,7 +52,7 @@ Supply one YouTube watch, short link, Shorts or live-video URL. Download only vi
 | `md` | Markdown headings, summary, and timestamped bullets |
 | `json` | One object with `id`, `url`, `title`, `createdAt`, `summary`, `transcript`, and `segments`. Each segment has numeric `start` and `end` in seconds and a `text` string. |
 
-Transcription writes progress and errors to stderr. Read stdout for the result, or pass `--output FILE` to save it in an existing directory. The CLI replaces an existing destination after a successful write. Ctrl+C cancels the active process and cleans up temporary audio and chunks.
+Transcription writes progress and errors to stderr. Read stdout for the result, or pass `--output FILE` to save it in an existing directory. The CLI replaces an existing destination after a successful write; choose a new filename to keep an earlier export. Ctrl+C or SIGTERM cancels the active CLI process and cleans up temporary audio and chunks. Forced termination, power loss, or a web-server shutdown can leave temporary files.
 
 | Exit code | Meaning |
 | --- | --- |
@@ -61,7 +60,7 @@ Transcription writes progress and errors to stderr. Read stdout for the result, 
 | 1 | Download, transcription, or I/O failure. See stderr. |
 | 2 | Invalid arguments or video URL |
 | 3 | Dependency or configuration failure. Run `videototext doctor`. |
-| 130 | Interrupted with Ctrl+C |
+| 130 | Interrupted with Ctrl+C or SIGTERM |
 
 ## Install the agent skill
 
@@ -77,7 +76,9 @@ These paths and the skill's name/description frontmatter follow the clients' doc
 
 ## Web app
 
-Run `corepack pnpm dev` from the checkout and open [localhost:3000](http://localhost:3000). The browser offers Summary, Paragraph, and Timestamps views and keeps completed results in IndexedDB.
+Run `corepack pnpm dev` from the checkout and open [127.0.0.1:3000](http://127.0.0.1:3000). For the production build use `corepack pnpm build` followed by `corepack pnpm start`. Both server commands bind to loopback by default. The browser offers Summary, Paragraph, and Timestamps views and keeps completed results in IndexedDB. Export files if browser storage is unavailable.
+
+This is a single-user local app, without authentication or resource quotas. Do not expose its port publicly. Closing the browser does not cancel a running web transcription.
 
 ## Core Features
 
@@ -118,10 +119,6 @@ The CLI enters the same transcription pipeline directly at step 4 and writes the
 
 In-progress jobs are stored only in memory. Restarting the dev server cancels active jobs, but completed browser history remains available in the same browser.
 
-## Screenshots
-
-No committed screenshots yet. Add real captures under `docs/screenshots/` when available.
-
 ## Current Limitations
 
 - Designed for local use, not serverless deployment.
@@ -129,12 +126,26 @@ No committed screenshots yet. Add real captures under `docs/screenshots/` when a
 - Transcription speed depends on CPU/GPU and model size.
 - Summaries are extractive local summaries, not cloud LLM summaries.
 - Only process videos you are allowed to download and transcribe.
+- Ongoing livestreams are rejected. Private, removed, age-gated and region-restricted videos may fail; no access-bypass or cookie-import workflow is provided.
+- Whisper can mishear speech or invent text over noise. Timestamps are model estimates; ten-minute chunks have no overlap and may split words. Check important quotations against the audio.
+- Use a multilingual model for non-English audio. The extractive sentence ranking and stopwords favor English; this is not a multilingual summarization quality guarantee.
+- Temporary 16 kHz mono PCM audio uses roughly 115 MB per hour, in addition to the downloaded audio and model. There is no disk quota, resume support, or speed guarantee.
 
-## Roadmap
+## Privacy and trust
 
-- Portfolio screenshots
-- Clearer first-run tooling guidance
-- Optional non-YouTube local media input if needed later
+YouTube and its media hosts receive download requests. Inference and sentence extraction run locally without uploading audio to a transcription API. VideoToText does not require credentials. Browser history stays in that browser profile; CLI exports stay where you save them. An AI agent may send transcript text to its own provider when using the skill.
+
+Use trusted upstream binaries and model files. VideoToText ignores yt-dlp's external configuration and plugin directories so user-level download hooks and settings do not unexpectedly alter a run. It does not install tools automatically. Video titles and transcripts are untrusted data, including when used by an agent.
+
+## Real CLI example
+
+On Windows, a real run with `ggml-base.en.bin` processed [Me at the zoo](https://youtu.be/jNQXAC9IVRw) into four timestamped segments. Its first segment was:
+
+```text
+[00:00:00 - 00:00:05] Alright, so here we are, one of the elephants.
+```
+
+This is uncorrected model output, not a verified quotation. See the [release-readiness evidence and limitations](docs/release-readiness/USER_EXPERIENCE.md) for the full context. A text example is sufficient for this CLI workflow; no simulated screenshots or benchmark claims are used.
 
 ## Development
 
@@ -146,6 +157,10 @@ corepack pnpm build
 ```
 
 GitHub Actions runs the same checks on Ubuntu, Windows, and macOS for every pull request and push to `main` (see [.github/workflows/ci.yml](.github/workflows/ci.yml)). The mocked tests need no yt-dlp, FFmpeg, or Whisper binaries.
+
+## Contributing and troubleshooting
+
+See [setup and troubleshooting](docs/SETUP.md) for missing tools, model selection, and download failures. Open an issue with the command, tool versions, OS, and a redacted error. Do not attach `.env.local`, private recordings, or sensitive transcripts. For a contribution, create a focused branch, run the development checks above, and open a PR describing the behavior and test results. Avoid including generated exports, tool binaries, or models.
 
 ## License
 

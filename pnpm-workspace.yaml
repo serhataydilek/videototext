@@ -2,3 +2,10 @@ allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
+
+# Security fixes for Next.js' build/image dependencies; keep the existing framework major.
+overrides:
+  next>postcss: ^8.5.23
+  next>sharp: ^0.35.5
+  nanoid@<3.3.18: 3.3.18
+  source-map-js@<1.2.2: 1.2.2

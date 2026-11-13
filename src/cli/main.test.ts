@@ -64,7 +64,12 @@ describe("CLI and web transcription", () => {
     run.mockImplementation(async (_command, args) => {
       if (args.includes("--dump-single-json")) {
         expect(args).not.toContain("--ffmpeg-location");
+        expect(args).toContain("--ignore-config");
+        expect(args).toContain("--no-plugin-dirs");
         return { stdout: JSON.stringify({ title: "Demo", webpage_url: url }), stderr: "" };
+      }
+      if (args.includes("format=duration")) {
+        return { stdout: "600.125\n", stderr: "" };
       }
       if (args.includes("--extract-audio")) {
         const template = args[args.indexOf("-o") + 1];
@@ -96,7 +101,7 @@ describe("CLI and web transcription", () => {
   it("prints only JSON on stdout, offsets chunks and removes temporary audio", async () => {
     expect(await cli("transcribe", url, "--format", "json")).toBe(0);
     const result: TranscriptResult = JSON.parse(stdout.join("\n"));
-    expect(result.segments.map((segment) => segment.start)).toEqual([0.1, 600.1]);
+    expect(result.segments.map((segment) => segment.start)).toEqual([0.1, 600.23]);
     expect(result.summary).toContain("We discuss an important example today.");
     expect(result.transcript).toContain("00:10:00");
     expect(stderr.join("\n")).toContain("Transcribing chunk 2 of 2");
@@ -176,6 +181,53 @@ describe("CLI and web transcription", () => {
     const [done] = await once(getEmitter(job.id)!, "done") as [JobSnapshot];
     expect(done.status).toBe("completed");
     expect(done.result).toMatchObject({ id: job.id, title: "Demo", url });
-    expect(done.result?.segments[1].start).toBe(600.1);
+    expect(done.result?.segments[1].start).toBe(600.23);
+  });
+
+  it("rejects ongoing livestreams before downloading", async () => {
+    const fakeTools = run.getMockImplementation()!;
+    run.mockImplementation(async (...params) => params[1].includes("--dump-single-json")
+      ? { stdout: JSON.stringify({ is_live: true }), stderr: "" } : fakeTools(...params));
+    expect(await cli("transcribe", url)).toBe(1);
+    expect(stderr.join("\n")).toContain("still live");
+    expect(run.mock.calls.some(([, args]) => args.includes("--extract-audio"))).toBe(false);
+  });
+
+  it("keeps the validated source URL instead of an arbitrary metadata URL", async () => {
+    const fakeTools = run.getMockImplementation()!;
+    run.mockImplementation(async (...params) => params[1].includes("--dump-single-json")
+      ? { stdout: JSON.stringify({ title: "Demo", webpage_url: "javascript:example" }), stderr: "" } : fakeTools(...params));
+    expect(await cli("transcribe", url, "--format", "json")).toBe(0);
+    expect(JSON.parse(stdout[0]).url).toBe(url);
+  });
+
+  it.each(["", "NaN", "-1", "0"])("rejects invalid chunk duration %s", async (duration) => {
+    const fakeTools = run.getMockImplementation()!;
+    run.mockImplementation(async (...params) => params[1].includes("format=duration")
+      ? { stdout: duration, stderr: "" } : fakeTools(...params));
+    expect(await cli("transcribe", url)).toBe(1);
+    expect(stderr.join("\n")).toContain("invalid chunk duration");
+    await expect(stat(workDir!)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it.each([
+    {}, { transcription: [{ text: "Missing offsets" }] },
+    { transcription: [{ offsets: { from: -1, to: 10 }, text: "Negative" }] },
+    { transcription: [{ offsets: { from: 10, to: 1 }, text: "Reversed" }] },
+    { transcription: [{ offsets: { from: "1", to: 10 }, text: "String" }] }
+  ])("rejects malformed Whisper output without replacing a saved export", async (data) => {
+    const file = path.join(directory, "notes.json");
+    await writeFile(file, "existing");
+    const fakeTools = run.getMockImplementation()!;
+    run.mockImplementation(async (...params) => {
+      if (params[1].includes("-oj")) {
+        await writeFile(params[1][params[1].indexOf("-of") + 1] + ".json", JSON.stringify(data));
+        return { stdout: "", stderr: "" };
+      }
+      return fakeTools(...params);
+    });
+    expect(await cli("transcribe", url, "--output", file)).toBe(1);
+    expect(await readFile(file, "utf8")).toBe("existing");
+    await expect(stat(workDir!)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
