@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, Download, FileText, History, Loader2, Trash2, Youtube } from "lucide-react";
 import { buildMarkdownExport, buildTxtExport, safeFilename } from "@/lib/export";
 import { formatTimestampRange } from "@/lib/time";
@@ -18,14 +18,17 @@ export function VideoToTextApp() {
   const [history, setHistory] = useState<TranscriptResult[]>([]);
   const [activeResult, setActiveResult] = useState<TranscriptResult | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("summary");
+  const [isStarting, setIsStarting] = useState(false);
+  const sourceRef = useRef<EventSource | null>(null);
 
-  const isRunning = job?.status === "queued" || job?.status === "running";
+  const isRunning = isStarting || job?.status === "queued" || job?.status === "running";
 
   useEffect(() => {
     loadHistory().then((items) => {
-      setHistory(items);
-      setActiveResult(items[0] ?? null);
+      setHistory((current) => current.reduce((loaded, result) => upsertResult(loaded, result), items));
+      setActiveResult((current) => current ?? items[0] ?? null);
     }).catch(() => setError("Browser history is unavailable. You can still transcribe and export results."));
+    return () => sourceRef.current?.close();
   }, []);
 
   useEffect(() => {
@@ -42,35 +45,36 @@ export function VideoToTextApp() {
 
   async function startJob(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isRunning) return;
+    setIsStarting(true);
     setError(null);
     setJob(null);
 
-    let response: Response;
     try {
-      response = await fetch("/api/jobs", {
+      const response = await fetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url })
       });
+      const payload = await readJsonResponse(response);
+
+      if (!response.ok || !payload.job || typeof payload.job.id !== "string") {
+        setError(payload.error ?? "The server did not return a valid job. Try again after checking the local server.");
+        return;
+      }
+      setJob(payload.job);
+      subscribeToJob(payload.job.id);
     } catch {
       setError("Could not reach the local transcription server. Make sure the app is running and reload the page.");
-      return;
+    } finally {
+      setIsStarting(false);
     }
-
-    const payload = await readJsonResponse(response);
-
-    if (!response.ok) {
-      setError(payload.error ?? "Could not start the job.");
-      return;
-    }
-
-    const nextJob = payload.job as JobSnapshot;
-    setJob(nextJob);
-    subscribeToJob(nextJob.id);
   }
 
   function subscribeToJob(id: string) {
+    sourceRef.current?.close();
     const source = new EventSource(`/api/jobs/${id}/events`);
+    sourceRef.current = source;
 
     const updateFromEvent = (event: MessageEvent<string>) => {
       setJob(JSON.parse(event.data) as JobSnapshot);
@@ -86,15 +90,23 @@ export function VideoToTextApp() {
       source.close();
     });
     source.onerror = () => {
-      setError("Connection to the job stream was interrupted. Restart the job if progress does not continue.");
+      const message = "Connection to the job stream was interrupted. The server may still be processing; wait before trying again.";
+      setError(message);
+      setJob((current) => current?.id === id && current.status !== "completed"
+        ? { ...current, status: "failed", stage: "connection lost", message }
+        : current);
       source.close();
     };
   }
 
   async function clearHistory() {
-    await clearResults();
-    setHistory([]);
-    setActiveResult(null);
+    try {
+      await clearResults();
+      setHistory([]);
+      setActiveResult(null);
+    } catch {
+      setError("Could not clear browser history. Your saved transcripts were kept.");
+    }
   }
 
   const selectedTitle = useMemo(
@@ -139,13 +151,14 @@ export function VideoToTextApp() {
                       <span className="status-stage">{job.stage}</span>
                       <span>{Math.round(job.progress * 100)}%</span>
                     </div>
-                    <div className="progress-track" aria-label="Job progress">
+                    <div className="progress-track" role="progressbar" aria-label="Job progress"
+                      aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(job.progress * 100)}>
                       <div className="progress-bar" style={{ width: `${Math.round(job.progress * 100)}%` }} />
                     </div>
-                    <p className="status-message">{job.message}</p>
+                    <p className="status-message" role="status">{job.message}</p>
                   </>
                 )}
-                {(error || job?.error) && <div className="error-message">{error || job?.error}</div>}
+                {(error || job?.error) && <div className="error-message" role="alert">{error || job?.error}</div>}
               </div>
             )}
           </section>
@@ -224,18 +237,25 @@ function ResultView({
         </div>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="Result sections">
-        <button className={`tab ${viewMode === "summary" ? "active" : ""}`} onClick={() => setViewMode("summary")}>
-          Summary
-        </button>
-        <button className={`tab ${viewMode === "paragraph" ? "active" : ""}`} onClick={() => setViewMode("paragraph")}>
-          Paragraph
-        </button>
-        <button className={`tab ${viewMode === "transcript" ? "active" : ""}`} onClick={() => setViewMode("transcript")}>
-          Timestamps
-        </button>
+      <div className="tabs" role="tablist" aria-label="Result sections" onKeyDown={(event) => {
+        const modes: ViewMode[] = ["summary", "paragraph", "transcript"];
+        const index = modes.indexOf(viewMode);
+        const next = { ArrowRight: (index + 1) % 3, ArrowLeft: (index + 2) % 3, Home: 0, End: 2 }[event.key];
+        if (next === undefined) return;
+        event.preventDefault();
+        setViewMode(modes[next]);
+        event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=tab]")[next].focus();
+      }}>
+        {([ ["summary", "Summary"], ["paragraph", "Paragraph"], ["transcript", "Timestamps"] ] as const).map(([mode, label]) => (
+          <button key={mode} id={`result-tab-${mode}`} role="tab" aria-controls="result-panel"
+            aria-selected={viewMode === mode} tabIndex={viewMode === mode ? 0 : -1}
+            className={`tab ${viewMode === mode ? "active" : ""}`} onClick={() => setViewMode(mode)}>
+            {label}
+          </button>
+        ))}
       </div>
 
+      <div id="result-panel" role="tabpanel" aria-labelledby={`result-tab-${viewMode}`} tabIndex={0}>
       {viewMode === "summary" ? (
         <div className="summary">{result.summary}</div>
       ) : viewMode === "paragraph" ? (
@@ -254,6 +274,7 @@ function ResultView({
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -322,34 +343,43 @@ async function openDb(): Promise<IDBDatabase> {
 
 async function saveResult(result: TranscriptResult): Promise<void> {
   const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(storeName, "readwrite");
-    tx.objectStore(storeName).put(result);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).put(result);
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error("Browser history write was aborted."));
+    });
+  } finally {
+    db.close();
+  }
 }
 
 async function loadHistory(): Promise<TranscriptResult[]> {
   const db = await openDb();
-  const items = await new Promise<TranscriptResult[]>((resolve, reject) => {
-    const tx = db.transaction(storeName, "readonly");
-    const request = tx.objectStore(storeName).getAll();
-    request.onsuccess = () => resolve(request.result as TranscriptResult[]);
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  try {
+    const items = await new Promise<TranscriptResult[]>((resolve, reject) => {
+      const tx = db.transaction(storeName, "readonly");
+      const request = tx.objectStore(storeName).getAll();
+      request.onsuccess = () => resolve(request.result as TranscriptResult[]);
+      request.onerror = () => reject(request.error);
+    });
+    return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  } finally {
+    db.close();
+  }
 }
 
 async function clearResults(): Promise<void> {
   const db = await openDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(storeName, "readwrite");
-    tx.objectStore(storeName).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
-  db.close();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(storeName, "readwrite");
+      tx.objectStore(storeName).clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = tx.onabort = () => reject(tx.error ?? new Error("Browser history clearing was aborted."));
+    });
+  } finally {
+    db.close();
+  }
 }

@@ -61,3 +61,10 @@ jobs:
 
       - name: Build web app
         run: corepack pnpm build
+
+      # Browser UI fixtures mock transcription; no YouTube/tools/model in CI.
+      - name: Install Chromium for browser tests
+        run: corepack pnpm exec playwright install --with-deps chromium
+
+      - name: Run browser regression tests
+        run: corepack pnpm run test:browser

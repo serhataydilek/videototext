@@ -396,6 +396,21 @@ button:disabled {
     display: grid;
   }
 
+  .result-view,
+  .empty-state {
+    padding: 20px;
+  }
+
+  .tabs {
+    display: flex;
+  }
+
+  .tab {
+    flex: 1;
+    padding: 0 8px;
+    font-size: 14px;
+  }
+
   .segment {
     grid-template-columns: 1fr;
     gap: 4px;
