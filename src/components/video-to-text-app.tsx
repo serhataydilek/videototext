@@ -25,7 +25,7 @@ export function VideoToTextApp() {
     loadHistory().then((items) => {
       setHistory(items);
       setActiveResult(items[0] ?? null);
-    });
+    }).catch(() => setError("Browser history is unavailable. You can still transcribe and export results."));
   }, []);
 
   useEffect(() => {
@@ -33,11 +33,11 @@ export function VideoToTextApp() {
       return;
     }
 
+    setActiveResult(job.result);
+    setViewMode("summary");
     saveResult(job.result).then(() => {
       setHistory((items) => upsertResult(items, job.result!));
-      setActiveResult(job.result!);
-      setViewMode("summary");
-    });
+    }).catch(() => setError("Transcript is ready, but browser history could not be saved. Export it to keep a copy."));
   }, [job]);
 
   async function startJob(event: React.FormEvent<HTMLFormElement>) {

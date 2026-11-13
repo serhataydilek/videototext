@@ -108,7 +108,11 @@ if (require.main === module) {
   const controller = new AbortController();
   const interrupt = () => controller.abort();
   process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
   runCli(process.argv.slice(2), controller.signal)
     .then((code) => { process.exitCode = code; })
-    .finally(() => process.off("SIGINT", interrupt));
+    .finally(() => {
+      process.off("SIGINT", interrupt);
+      process.off("SIGTERM", interrupt);
+    });
 }
