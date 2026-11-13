@@ -71,8 +71,10 @@ Node minimum remains 22.13.0; pnpm remains pinned at 11.5.0. CLI options, JSON f
 | Production registry audit | 0 critical, 1 high, 0 moderate/low; see technical audit |
 | All-dependency registry audit | 3 critical, 16 high, 15 moderate, 1 low; no clean-audit claim |
 | Browser / screenshot | Blocked by browser automation environment; no captures fabricated |
-| `git diff --check` | Passed during preparation; final staged check required before commit |
-| GitHub Actions | To be recorded after the explicitly requested branch push and draft PR |
+| `git diff --check` | Full branch diff and staged report checks passed |
+| GitHub Actions | [CI run 43516530019](https://github.com/serhataydilek/videototext/actions/runs/43516530019): Ubuntu, Windows and macOS jobs all passed tests, TypeScript, CLI and production web builds on Node 22 for code/research commit `fda77b5` |
+
+[Draft PR #2](https://github.com/serhataydilek/videototext/pull/2) targets `main` from `feat/release-readiness`. The GitHub connector could read Actions but could not create the PR (403); the authenticated GitHub CLI created it as a draft. This evidence update changes documentation only; it does not imply a merge, released version or published listing.
 
 ## Review and publication gates
 
