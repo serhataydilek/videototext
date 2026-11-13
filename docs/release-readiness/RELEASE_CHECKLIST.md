@@ -80,9 +80,11 @@ Node minimum remains 22.13.0; pnpm remains pinned at 11.5.0. CLI options, JSON f
 | Browser / screenshot | Real Windows Chromium 158.0.8127.18, 1280×900 and 390×844 captures inspected; additional 320px mobile fit check passed |
 | `git diff --check` | Full branch diff and staged report checks passed |
 | Merged baseline CI | [CI run 43517518635](https://github.com/serhataydilek/videototext/actions/runs/43517518635): all three OS jobs passed on PR #2 merge `032f25ebbf250b8903247f8bcbeab78a2c5fd8fe` |
-| Final branch CI | Record the draft PR run after pushing `release/v0.2.1-final`; CI now also executes the isolated Chromium regressions on all three OSes |
+| Final branch CI | [CI run 43520419879](https://github.com/serhataydilek/videototext/actions/runs/43520419879): Ubuntu, Windows and macOS all passed frozen install, 53 unit tests, TypeScript, CLI/web builds and 10 Chromium regressions for `f02c7e8c66d56067e8edc92be48c22836503ca90` |
 
 [PR #2](https://github.com/serhataydilek/videototext/pull/2) is confirmed merged. The final branch is based on its latest merge commit, with no unrelated dirty files at the start. No main branch modification, force push or automatic merge is part of final preparation.
+
+Final review is [draft PR #3](https://github.com/serhataydilek/videototext/pull/3), `release/v0.2.1-final` → `main`. Source/validation commit: `fda2b7fccee1baed5cbc89d8f3d89a9c18c7b3e4`; release-notes/screenshots commit: `f02c7e8c66d56067e8edc92be48c22836503ca90`. The subsequent evidence-only commit changes this checklist, with no application/test/package changes.
 
 ## Review and publication gates
 
@@ -99,7 +101,7 @@ Node minimum remains 22.13.0; pnpm remains pinned at 11.5.0. CLI options, JSON f
 - [ ] Test actual Agensi MCP delivery before claiming an Agensi integration works.
 - [ ] npm publication remains out of scope and prohibited without separate approval; the manifest stays private.
 
-**GitHub verdict:** browser acceptance is complete for the tested environment; ready for final draft review after branch CI succeeds. Owner approval is still required before merge/tag/release. **Agensi verdict:** structurally validated, still on hold for licensing/delivery clarification and platform testing. Do not contact Agensi or Joeri as part of this work.
+**GitHub verdict:** browser acceptance is complete for the tested environment and three-platform branch CI passed; ready for final draft review. Owner approval is still required before merge/tag/release. **Agensi verdict:** structurally validated, still on hold for licensing/delivery clarification and platform testing. Do not contact Agensi or Joeri as part of this work.
 
 ## Exact steps after separate approval (not executed)
 
