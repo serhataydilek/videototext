@@ -107,4 +107,6 @@ The independent agent also produced Markdown successfully; that run is documente
 
 ## Submission hold
 
+Final preparation targets CLI **0.2.1**, installed separately. The skill itself is unchanged from PR #2; regeneration validates the current skill and MIT license as the same two-file, 3,079-byte ZIP (SHA-256 `76498bc3901b0bb205f84c0312445f9676611ed6d7dacd3f677a2083b8b89720`). Price remains Free ($0). Final browser evidence is in [USER_EXPERIENCE.md](USER_EXPERIENCE.md); it is not an Agensi MCP execution claim.
+
 Confirm the platform can distribute this free MIT skill without imposing contradictory redistribution restrictions. Then obtain owner approval for the listing/package, inspect detected permissions, and test actual MCP delivery. Do not publish until these gates are satisfied.
