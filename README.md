@@ -1,6 +1,6 @@
 # VideoToText
 
-**Version: 0.2.1**
+**Version: 0.3.0 (in development; stable release: v0.2.1)**
 
 Turn a YouTube video into a timestamped transcript and an extractive summary using your own machine. Use the standalone CLI, install its instructions as an agent skill, or open the local web app. VideoToText is free and MIT-licensed. Transcription requires no account, subscription, or paid API.
 
@@ -44,6 +44,8 @@ videototext doctor
 videototext transcribe "https://youtu.be/jNQXAC9IVRw"
 videototext transcribe "https://youtu.be/jNQXAC9IVRw" --format json
 videototext transcribe "https://youtu.be/jNQXAC9IVRw" --format md --output transcript.md
+videototext transcribe "https://youtu.be/jNQXAC9IVRw" --format srt --output transcript.srt
+videototext transcribe "https://youtu.be/jNQXAC9IVRw" --format vtt --output transcript.vtt
 ```
 
 Supply one YouTube watch, short link, Shorts or live-video URL. Download only videos you have permission to process. Internet access is needed for the source audio. Whisper inference and summarization run locally.
@@ -52,7 +54,11 @@ Supply one YouTube watch, short link, Shorts or live-video URL. Download only vi
 | --- | --- |
 | `txt` (default) | Title, source URL, creation time, summary, and timestamped transcript lines |
 | `md` | Markdown headings, summary, and timestamped bullets |
+| `srt` | Numbered subtitle cues with `HH:MM:SS,mmm` timing |
+| `vtt` | WebVTT subtitle cues with `HH:MM:SS.mmm` timing |
 | `json` | One object with `id`, `url`, `title`, `createdAt`, `summary`, `transcript`, and `segments`. Each segment has numeric `start` and `end` in seconds and a `text` string. |
+
+Subtitle exports contain only timed speech, without title or summary. Empty text and non-finite, negative, reversed, or zero-length timings (after millisecond rounding) are skipped. Valid cues are sorted by start time; text is flattened to one line and markup is escaped. TXT, Markdown, and JSON retain their existing format.
 
 Transcription writes progress and errors to stderr. Read stdout for the result, or pass `--output FILE` to save it in an existing directory. The CLI replaces an existing destination after a successful write; choose a new filename to keep an earlier export. Ctrl+C or SIGTERM cancels the active CLI process and cleans up temporary audio and chunks. Forced termination, power loss, or a web-server shutdown can leave temporary files.
 
@@ -78,7 +84,9 @@ These paths and the skill's name/description frontmatter follow the clients' doc
 
 ## Web app
 
-Run `corepack pnpm dev` from the checkout and open [127.0.0.1:3000](http://127.0.0.1:3000). For the production build use `corepack pnpm build` followed by `corepack pnpm start`. Both server commands bind to loopback by default. The browser offers Summary, Paragraph, and Timestamps views and keeps completed results in IndexedDB. Export files if browser storage is unavailable.
+Run `corepack pnpm dev` from the checkout and open [127.0.0.1:3000](http://127.0.0.1:3000). For the production build use `corepack pnpm build` followed by `corepack pnpm start`. Both server commands bind to loopback by default. The dark workspace opens completed results in the Timestamps view. Click a timestamp to open the source YouTube video at that segment; invalid timings display “Time unavailable” without a link. Paragraph and Summary views remain available.
+
+Search within the selected view to highlight matches (the Timestamps view also filters segments). Copy the complete TXT transcript with one button, or use Export for TXT, Markdown, JSON, SRT, or WebVTT. Search saved history by title, source URL, or transcript text in the sidebar; on mobile, open it with the history menu. The existing IndexedDB database and records are preserved. Export files if browser storage or the clipboard is unavailable.
 
 This is a single-user local app, without authentication or resource quotas. Do not expose its port publicly. Closing the browser does not cancel a running web transcription.
 
@@ -92,7 +100,8 @@ This is a single-user local app, without authentication or resource quotas. Do n
 - Produces timestamped transcript segments
 - Generates a local extractive summary
 - Saves completed transcripts in browser storage
-- Exports results as TXT or Markdown in the browser and TXT, Markdown or JSON in the CLI
+- Exports TXT, Markdown, JSON, SRT, and WebVTT in both the browser and CLI
+- Searches and highlights transcript matches, links timestamps to YouTube, and copies complete transcripts
 
 ## Technology Stack
 
@@ -151,15 +160,16 @@ This is uncorrected model output, not a verified quotation. See the [release-rea
 
 ## Browser example
 
-Genuine Chromium capture after local transcription of the same video. Recognition errors are preserved. [Mobile capture](docs/screenshots/v0.2.1-mobile.png).
+Genuine v0.3.0 Chromium capture after local transcription of the same video. Recognition errors are preserved. [Mobile capture](docs/screenshots/v0.3.0-mobile.png).
 
-![VideoToText displaying the real timestamped transcription](docs/screenshots/v0.2.1-desktop.png)
+![VideoToText displaying the real timestamped transcription](docs/screenshots/v0.3.0-desktop.png)
 
 ## Development
 
 ```sh
 corepack pnpm test
 corepack pnpm exec tsc --noEmit
+corepack pnpm lint --max-warnings 0
 corepack pnpm run build:cli
 corepack pnpm build
 ```
@@ -173,7 +183,7 @@ corepack pnpm exec playwright install chromium
 corepack pnpm run test:browser
 ```
 
-Playwright is a development-only dependency. Its tests start and stop an isolated local production server and browser profile on port 3100. To exercise a genuine YouTube transcription with your configured tools/model, run `corepack pnpm run test:browser:real`. That separate network-dependent test regenerates the screenshots above and saves ignored exports under `release-artifacts/`; it is not run in CI. Mobile checks use Chromium viewports, not physical phones.
+Playwright is a development-only dependency. Its tests start and stop an isolated local production server and browser profile on port 3100. To exercise a genuine YouTube transcription with your configured tools/model, run `corepack pnpm run test:browser:real`. That separate network-dependent test saves current-interface screenshots and exports under `release-artifacts/`; it is not run in CI. Mobile checks use Chromium viewports, not physical phones.
 
 ## Contributing and troubleshooting
 

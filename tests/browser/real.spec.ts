@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { buildExport } from "../../src/lib/export";
+import type { TranscriptResult } from "../../src/lib/types";
 
 test("real: YouTube transcription, progress, views, exports and persisted history", async ({ page }) => {
   test.setTimeout(180_000);
@@ -29,9 +31,10 @@ test("real: YouTube transcription, progress, views, exports and persisted histor
   const speech = await page.locator(".segment > span:last-child").allTextContents();
   expect(segments.length).toBeGreaterThan(0);
   await mkdir("docs/screenshots", { recursive: true });
-  await page.screenshot({ path: "docs/screenshots/v0.2.1-desktop.png", fullPage: true });
+  await page.screenshot({ path: "release-artifacts/v0.3-real-desktop.png", fullPage: true });
   for (const [button, extension] of [["TXT", "txt"], ["Markdown", "md"]]) {
     const pending = page.waitForEvent("download");
+    await page.getByText("Export", { exact: true }).click();
     await page.getByRole("button", { name: button, exact: true }).click();
     const download = await pending;
     const text = await readFile((await download.path())!, "utf8");
@@ -44,12 +47,27 @@ test("real: YouTube transcription, progress, views, exports and persisted histor
   await page.getByRole("tab", { name: "Summary", exact: true }).click();
   await expect(page.locator(".summary")).toContainText("Key points");
   await expect(page.locator(".history-item")).toHaveCount(1);
+  await page.getByText("Export", { exact: true }).click();
+  const jsonPending = page.waitForEvent("download");
+  await page.getByRole("button", { name: "JSON", exact: true }).click();
+  const jsonDownload = await jsonPending;
+  const data: TranscriptResult = JSON.parse(await readFile((await jsonDownload.path())!, "utf8"));
+  for (const [label, format] of [["SRT", "srt"], ["WebVTT", "vtt"]] as const) {
+    await page.getByText("Export", { exact: true }).click();
+    const pending = page.waitForEvent("download");
+    await page.getByRole("button", { name: label, exact: true }).click();
+    const download = await pending;
+    const text = await readFile((await download.path())!, "utf8");
+    expect(text).toBe(buildExport(data, format));
+    expect(text).toContain(" --> ");
+    await writeFile(`release-artifacts/real-browser-transcript.${format}`, text);
+  }
   await page.reload();
   await expect(page.getByRole("heading", { name: "Me at the zoo", exact: true })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("tab", { name: "Timestamps", exact: true }).click();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: "docs/screenshots/v0.2.1-mobile.png", fullPage: true });
+  await page.screenshot({ path: "release-artifacts/v0.3-real-mobile.png", fullPage: true });
   expect(stages.has("transcribing")).toBe(true);
   expect(errors).toEqual([]);
   await writeFile("release-artifacts/real-browser-evidence.json", JSON.stringify({
