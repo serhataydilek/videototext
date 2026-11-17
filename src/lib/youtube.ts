@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidTimestamp } from "./time";
 
 const youtubeHosts = new Set([
   "youtube.com",
@@ -7,6 +8,18 @@ const youtubeHosts = new Set([
   "music.youtube.com",
   "youtu.be"
 ]);
+
+export function youtubeTimestampUrl(value: string, seconds: number): string | null {
+  if (!isValidYoutubeUrl(value) || !isValidTimestamp(seconds)) return null;
+  const source = new URL(value);
+  const id = source.hostname === "youtu.be" || source.pathname !== "/watch"
+    ? source.pathname.split("/").filter(Boolean).at(-1)!
+    : source.searchParams.get("v")!;
+  const target = new URL("https://www.youtube.com/watch");
+  target.searchParams.set("v", id);
+  target.searchParams.set("t", `${Math.floor(seconds)}s`);
+  return target.href;
+}
 
 export const youtubeUrlSchema = z.string().trim().url().refine(isValidYoutubeUrl, {
   message: "Enter a valid YouTube video URL."

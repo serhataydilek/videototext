@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { JobSnapshot, TranscriptResult } from "../lib/types";
-import { buildMarkdownExport, buildTxtExport } from "../lib/export";
+import { buildExport } from "../lib/export";
 import { getConfig } from "../server/dependencies";
 import { createJob, getEmitter } from "../server/jobs/store";
 import { runCommand } from "../server/process";
@@ -16,6 +16,9 @@ const url = "https://youtu.be/jNQXAC9IVRw";
 const run = vi.mocked(runCommand);
 
 describe("CLI arguments", () => {
+  it.each(["srt", "vtt"])("accepts the %s subtitle format", format => {
+    expect(parseArgs(["transcribe", url, "--format", format])).toMatchObject({ format });
+  });
   it("defaults to txt and accepts options around the URL", () => {
     expect(parseArgs(["transcribe", url])).toMatchObject({ url, format: "txt" });
     expect(parseArgs(["transcribe", "--format", "md", url, "--output", "my notes.md"]))
@@ -109,7 +112,7 @@ describe("CLI and web transcription", () => {
     await expect(stat(workDir!)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
-  it.each(["txt", "md"])("saves the same %s export as the web UI", async (format) => {
+  it.each(["txt", "md", "srt", "vtt"] as const)("saves the same %s export as the web UI", async (format) => {
     const file = path.join(directory, "my notes");
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
@@ -117,8 +120,7 @@ describe("CLI and web transcription", () => {
       expect(stdout).toEqual([]);
       expect(await cli("transcribe", url, "--format", "json")).toBe(0);
       const data = JSON.parse(stdout[0]);
-      const render = format === "txt" ? buildTxtExport : buildMarkdownExport;
-      expect(await readFile(file, "utf8")).toBe(render(data) + "\n");
+      expect(await readFile(file, "utf8")).toBe(buildExport(data, format) + "\n");
     } finally {
       vi.useRealTimers();
     }

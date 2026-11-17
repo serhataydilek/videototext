@@ -2,13 +2,13 @@
 import { randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { buildMarkdownExport, buildTxtExport } from "../lib/export";
+import { buildExport, type ExportFormat } from "../lib/export";
 import { youtubeUrlSchema } from "../lib/youtube";
 import { checkDependencies, DependencyError, getConfig } from "../server/dependencies";
 import { transcribe } from "../server/transcribe";
 
-const usage = "videototext doctor\nvideototext transcribe YOUTUBE_URL [--format txt|md|json] [--output FILE]";
-type Format = "txt" | "md" | "json";
+const usage = "videototext doctor\nvideototext transcribe YOUTUBE_URL [--format txt|md|json|srt|vtt] [--output FILE]";
+type Format = ExportFormat;
 type Command = { name: "help" } | { name: "doctor" } | {
   name: "transcribe"; url: string; format: Format; output?: string
 };
@@ -29,8 +29,8 @@ export function parseArgs(args: string[]): Command {
       const value = rest[++i];
       if (!value?.trim() || value.startsWith("-")) throw new UsageError(`Missing value for ${arg}.`);
       if (arg === "--format") {
-        if (format || (value !== "txt" && value !== "md" && value !== "json")) {
-          throw new UsageError("Specify --format once with txt, md or json.");
+        if (format || (value !== "txt" && value !== "md" && value !== "json" && value !== "srt" && value !== "vtt")) {
+          throw new UsageError("Specify --format once with txt, md, json, srt or vtt.");
         }
         format = value;
       } else {
@@ -81,8 +81,7 @@ export async function runCli(args: string[], signal: AbortSignal): Promise<numbe
       console.error(`[${Math.round(step.progress * 100)}%] ${step.message}`);
     }, signal);
     signal.throwIfAborted();
-    const render = { txt: buildTxtExport, md: buildMarkdownExport, json: (data: typeof result) => JSON.stringify(data, null, 2) };
-    const content = render[command.format](result);
+    const content = buildExport(result, command.format);
     if (command.output) {
       await saveOutput(command.output, content + "\n", signal);
       console.error(`Saved ${command.output}`);
